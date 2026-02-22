@@ -1,258 +1,112 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Extractor audio z filmu</title>
-
-  <style>
-    body {
-      font-family: system-ui, sans-serif;
-      max-width: 900px;
-      margin: 40px auto;
-      padding: 0 16px;
-      display: flex;
-      gap: 20px;
-    }
-
-    /* LEWA KOLUMNA (strona) */
-    .content {
-      flex: 3;
-    }
-
-    /* PRAWA KOLUMNA (REKLAMY) */
-    .ads {
-      flex: 1;
-      border-left: 2px solid #ddd;
-      padding-left: 20px;
-      min-width: 200px;
-    }
-
-    .ad-box {
-      width: 100%;
-      height: 300px;
-      background: #f0f0f0;
-      border: 1px solid #ccc;
-      margin-bottom: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      color: #555;
-    }
-
-    h1, h2 {
-      margin-bottom: 0.3em;
-    }
-
-    .section {
-      margin-bottom: 32px;
-      padding: 16px;
-      border: 1px solid #ddd;
-      border-radius: 8px;
-    }
-
-    button {
-      padding: 8px 16px;
-      cursor: pointer;
-      margin-top: 8px;
-    }
-
-    #log {
-      white-space: pre-wrap;
-      font-size: 0.9em;
-      background: #f7f7f7;
-      padding: 8px;
-      border-radius: 4px;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-
-    .hidden {
-      display: none;
-    }
-
-    a.download-link {
-      display: inline-block;
-      margin-top: 8px;
-    }
-
-    /* ANIMACJA ŁADOWANIA */
-    #loading {
-      display: none;
-      margin-top: 20px;
-      text-align: center;
-    }
-
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 5px solid #ddd;
-      border-top-color: #3498db;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin: 0 auto 10px;
-    }
-
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-  </style>
+    <title>Mini Dash</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #111;
+        }
+        canvas {
+            display: block;
+            background: #222;
+        }
+    </style>
 </head>
-
 <body>
 
-  <!-- LEWA STRONA -->
-  <div class="content">
-    <h1>Strona do wyciągania audio z filmu</h1>
+<canvas id="game"></canvas>
 
-    <div class="section">
-      <h2>1. Wgraj swój film</h2>
-      <input type="file" id="videoInput" accept="video/*" />
-      <p id="fileInfo"></p>
-      <button id="downloadOriginalBtn" class="hidden">Pobierz wgrany film</button>
-    </div>
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
 
-    <div class="section">
-      <h2>2. Wyciągnij audio z filmu</h2>
-      <button id="extractBtn" disabled>Wyciągnij audio (MP3)</button>
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-      <!-- ANIMACJA ŁADOWANIA -->
-      <div id="loading">
-        <div class="spinner"></div>
-        <p>Przetwarzanie… proszę czekać</p>
-      </div>
+let player = {
+    x: 100,
+    y: canvas.height - 150,
+    width: 40,
+    height: 40,
+    dy: 0,
+    gravity: 0.8,
+    jumpPower: -15,
+    grounded: false
+};
 
-      <div id="audioResult" class="hidden">
-        <p>Audio gotowe:</p>
-        <a id="audioDownloadLink" class="download-link" download="audio.mp3">Pobierz audio MP3</a>
-      </div>
-    </div>
+let obstacles = [];
+let speed = 6;
+let gameOver = false;
 
-    <div class="section">
-      <h2>Log / status</h2>
-      <div id="log">Czekam na wgranie pliku wideo…</div>
-    </div>
-  </div>
+function spawnObstacle() {
+    obstacles.push({
+        x: canvas.width,
+        y: canvas.height - 100,
+        width: 40,
+        height: 40
+    });
+}
 
-  <!-- PRAWA KOLUMNA — REKLAMY -->
-  <div class="ads">
-    <h3>Reklamy</h3>
+setInterval(spawnObstacle, 1500);
 
-    <!-- TU WKLEJASZ KOD ADSENSE -->
-    <div class="ad-box">Miejsce na reklamę 300×250</div>
-    <div class="ad-box">Miejsce na reklamę 300×600</div>
-  </div>
+function update() {
+    if (gameOver) return;
 
-  <!-- FFmpeg z lepszego CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/ffmpeg.min.js"></script>
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  <script>
-    const { createFFmpeg, fetchFile } = FFmpeg;
+    // GROUND
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, canvas.height - 60, canvas.width, 60);
 
-    const ffmpeg = createFFmpeg({ log: true });
+    // PLAYER
+    player.dy += player.gravity;
+    player.y += player.dy;
 
-    const videoInput = document.getElementById('videoInput');
-    const fileInfo = document.getElementById('fileInfo');
-    const extractBtn = document.getElementById('extractBtn');
-    const logEl = document.getElementById('log');
-    const audioResult = document.getElementById('audioResult');
-    const audioDownloadLink = document.getElementById('audioDownloadLink');
-    const downloadOriginalBtn = document.getElementById('downloadOriginalBtn');
-    const loading = document.getElementById('loading');
-
-    let currentVideoFile = null;
-    let currentVideoObjectUrl = null;
-
-    function log(msg) {
-      logEl.textContent += '\\n' + msg;
-      logEl.scrollTop = logEl.scrollHeight;
+    if (player.y + player.height >= canvas.height - 60) {
+        player.y = canvas.height - 60 - player.height;
+        player.dy = 0;
+        player.grounded = true;
     }
 
-    videoInput.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) {
-        fileInfo.textContent = 'Nie wybrano pliku.';
-        extractBtn.disabled = true;
-        downloadOriginalBtn.classList.add('hidden');
-        return;
-      }
+    ctx.fillStyle = "lime";
+    ctx.fillRect(player.x, player.y, player.width, player.height);
 
-      currentVideoFile = file;
-      if (currentVideoObjectUrl) {
-        URL.revokeObjectURL(currentVideoObjectUrl);
-      }
-      currentVideoObjectUrl = URL.createObjectURL(file);
+    // OBSTACLES
+    ctx.fillStyle = "red";
+    for (let i = 0; i < obstacles.length; i++) {
+        obstacles[i].x -= speed;
+        ctx.fillRect(obstacles[i].x, obstacles[i].y, obstacles[i].width, obstacles[i].height);
 
-      fileInfo.textContent = `Wybrany plik: ${file.name} (${Math.round(file.size / 1024 / 1024)} MB)`;
-      extractBtn.disabled = false;
-      downloadOriginalBtn.classList.remove('hidden');
-
-      log('Plik wideo wczytany.');
-    });
-
-    downloadOriginalBtn.addEventListener('click', () => {
-      if (!currentVideoFile || !currentVideoObjectUrl) return;
-      const a = document.createElement('a');
-      a.href = currentVideoObjectUrl;
-      a.download = currentVideoFile.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    });
-
-    extractBtn.addEventListener('click', async () => {
-      if (!currentVideoFile) {
-        alert('Najpierw wgraj plik wideo.');
-        return;
-      }
-
-      extractBtn.disabled = true;
-      audioResult.classList.add('hidden');
-      loading.style.display = 'block';
-      log('Start: ładowanie FFmpeg…');
-
-      try {
-        if (!ffmpeg.isLoaded()) {
-          await ffmpeg.load();
-          log('FFmpeg załadowany.');
+        // COLLISION
+        if (
+            player.x < obstacles[i].x + obstacles[i].width &&
+            player.x + player.width > obstacles[i].x &&
+            player.y < obstacles[i].y + obstacles[i].height &&
+            player.y + player.height > obstacles[i].y
+        ) {
+            gameOver = true;
+            alert("Game Over!");
+            location.reload();
         }
+    }
 
-        const inputName = 'input_video';
-        const outputName = 'output_audio.mp3';
+    requestAnimationFrame(update);
+}
 
-        log('Zapisywanie pliku wirtualnie w FFmpeg…');
-        ffmpeg.FS('writeFile', inputName, await fetchFile(currentVideoFile));
+document.addEventListener("keydown", function(e) {
+    if (e.code === "Space" && player.grounded) {
+        player.dy = player.jumpPower;
+        player.grounded = false;
+    }
+});
 
-        log('Uruchamianie komendy FFmpeg…');
-        await ffmpeg.run(
-          '-i', inputName,
-          '-vn',
-          '-acodec', 'libmp3lame',
-          '-q:a', '2',
-          outputName
-        );
-
-        log('Odczytywanie wygenerowanego pliku audio…');
-        const data = ffmpeg.FS('readFile', outputName);
-
-        const blob = new Blob([data.buffer], { type: 'audio/mpeg' });
-        const url = URL.createObjectURL(blob);
-
-        audioDownloadLink.href = url;
-        audioDownloadLink.download = (currentVideoFile.name.replace(/\.[^.]+$/, '') || 'audio') + '.mp3';
-        audioResult.classList.remove('hidden');
-
-        log('Gotowe! Audio wyciągnięte.');
-      } catch (err) {
-        console.error(err);
-        log('Błąd: ' + err.message);
-        alert('Wystąpił błąd. Sprawdź log.');
-      } finally {
-        extractBtn.disabled = false;
-        loading.style.display = 'none';
-      }
-    });
-  </script>
+update();
+</script>
 
 </body>
 </html>
+
+
+
